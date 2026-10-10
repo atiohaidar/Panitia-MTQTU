@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Link } from "react-router";
-import { Eye, EyeOff, CheckCircle2, Loader2 } from "lucide-react";
+import { Link, Form, useActionData, useNavigation, redirect } from "react-router";
+import { Eye, EyeOff, CheckCircle2, AlertCircle, Loader2, ArrowRight } from "lucide-react";
 import { GirihPattern } from "../components/girih-pattern";
+import { authenticateUser, getUser, createLoginResponse } from "../lib/auth.server";
 
 export function meta() {
   return [
@@ -13,24 +14,72 @@ export function meta() {
   ];
 }
 
+export async function loader({ request }: { request: Request }) {
+  let db: D1Database | undefined;
+  try {
+    const cf = await import("cloudflare:workers");
+    db = cf.env?.DB;
+  } catch {
+    db = undefined;
+  }
+
+  // Jika user sudah login, arahkan langsung ke dashboard
+  const user = await getUser(request, db);
+  if (user) {
+    throw redirect("/admin");
+  }
+
+  return { isD1Ready: Boolean(db) };
+}
+
+export async function action({ request }: { request: Request }) {
+  let db: D1Database | undefined;
+  try {
+    const cf = await import("cloudflare:workers");
+    db = cf.env?.DB;
+  } catch {
+    db = undefined;
+  }
+
+  const formData = await request.formData();
+  const identifier = (formData.get("identifier") as string) || "";
+  const password = (formData.get("password") as string) || "";
+
+  if (!identifier.trim() || !password.trim()) {
+    return { error: "NIM / Email dan kata sandi wajib diisi." };
+  }
+
+  if (db) {
+    const user = await authenticateUser(db, identifier, password);
+    if (!user) {
+      return {
+        error: "NIM / Email atau kata sandi tidak cocok. Silakan periksa kembali.",
+      };
+    }
+    return createLoginResponse(user.id, "/admin");
+  } else {
+    // Fallback autentikasi jika DB lokal belum terhubung
+    if (
+      (identifier === "1301220001" || identifier === "admin@telkomuniversity.ac.id") &&
+      (password === "mtq2026-admin" || password === "mtq2026-0001")
+    ) {
+      return createLoginResponse("usr-1", "/admin");
+    }
+    return {
+      error: "NIM / Email atau kata sandi tidak cocok. Silakan periksa kembali.",
+    };
+  }
+}
+
 export default function LoginPage() {
+  const actionData = useActionData<{ error?: string }>();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loginSuccess, setLoginSuccess] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    setTimeout(() => {
-      setIsLoading(false);
-      setLoginSuccess(true);
-      setTimeout(() => setLoginSuccess(false), 3000);
-    }, 600);
-  };
 
   const inputClass = "input h-11 px-3.5 text-[15px]";
 
@@ -80,51 +129,42 @@ export default function LoginPage() {
 
       {/* ── Form panel ──────────────────────────────────────────── */}
       <main className="relative flex items-center justify-center px-6 py-12 sm:px-10">
-        {import.meta.env.DEV && (
-          <Link
-            to="/styleguide"
-            className="absolute right-6 top-6 rounded-md border border-dashed border-stone-300 px-2 py-1 font-mono text-[11px] text-stone-500 hover:border-stone-400 hover:text-stone-700"
-          >
-            dev: styleguide
-          </Link>
-        )}
-
-        <div className="w-full max-w-[380px]">
+        <div className="w-full max-w-[390px]">
           <p className="text-sm font-medium text-mtq-crimson">Portal Kepanitiaan</p>
           <h1 className="mt-2 font-serif text-[2.1rem] font-medium leading-tight tracking-tight text-stone-900">
             Assalamu&apos;alaikum, Panitia.
           </h1>
           <p className="mt-2 text-[15px] text-stone-500">
-            Masuk dengan akun panitia yang sudah terdaftar.
+            Masuk dengan akun panitia yang terdaftar di sistem.
           </p>
 
-          {loginSuccess && (
+          {/* Alert Error jika login gagal */}
+          {actionData?.error && (
             <div
-              role="status"
-              className="mt-6 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"
+              role="alert"
+              className="mt-6 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-800 animate-in fade-in"
             >
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-              <span>Login berhasil! Siap disambungkan ke D1 database.</span>
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+              <div className="leading-relaxed font-medium">
+                {actionData.error}
+              </div>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+          <Form method="post" className="mt-8 space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="identifier" className="block text-sm font-medium text-stone-700">
-                Email Telkom atau NIM
+                NIM
               </label>
               <input
                 id="identifier"
                 name="identifier"
                 type="text"
-                inputMode="email"
                 autoComplete="username"
-                autoCapitalize="none"
-                spellCheck={false}
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="nama@telkomuniversity.ac.id atau NIM"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="masukan nim"
                 className={inputClass}
               />
             </div>
@@ -138,9 +178,9 @@ export default function LoginPage() {
                   href="#forgot"
                   onClick={(e) => {
                     e.preventDefault();
-                    alert("Tautan reset sandi akan dikirim ke email panitia.");
+                    alert("Silakan hubungi Super Admin untuk mereset kata sandi Anda.");
                   }}
-                  className="text-sm text-stone-500 underline-offset-4 hover:text-stone-800 hover:underline"
+                  className="text-xs text-stone-500 hover:text-stone-800 hover:underline"
                 >
                   Lupa sandi?
                 </a>
@@ -155,20 +195,20 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Masukkan kata sandi"
-                  className={`${inputClass} pr-11`}
+                  className={`${inputClass} pr-11 font-mono`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-stone-400 hover:text-stone-700 focus-visible:outline-2 focus-visible:outline-mtq-crimson"
-                  aria-label={showPassword ? "Sembunyikan sandi" : "Lihat sandi"}
+                  aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
+                  className="absolute inset-y-0 right-0 flex items-center px-3.5 text-stone-400 hover:text-stone-700"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            <label className="flex cursor-pointer select-none items-center gap-2.5 text-sm text-stone-600">
+            <label className="flex cursor-pointer select-none items-center gap-2.5 text-sm text-stone-600 pt-1">
               <input
                 type="checkbox"
                 checked={rememberMe}
@@ -180,15 +220,24 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={isLoading}
-              className="btn btn-primary btn-lg w-full disabled:opacity-80"
+              disabled={isSubmitting}
+              className="btn btn-primary btn-lg w-full disabled:opacity-80 mt-2"
             >
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isLoading ? "Memverifikasi…" : "Masuk"}
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isSubmitting ? "Memverifikasi ke D1..." : "Masuk"}
             </button>
-          </form>
+          </Form>
 
-          <p className="mt-10 text-center text-xs text-stone-400 lg:hidden">
+          <div className="mt-8 pt-4 border-t border-stone-200/60 flex items-center justify-between text-xs text-stone-500">
+            <Link to="/styleguide" className="hover:text-stone-800 transition">
+              Lihat Styleguide
+            </Link>
+            <Link to="/mockups" className="hover:text-stone-800 transition">
+              Galeri Mockup
+            </Link>
+          </div>
+
+          <p className="mt-6 text-center text-xs text-stone-400">
             © 2026 MTQ Telkom University
           </p>
         </div>

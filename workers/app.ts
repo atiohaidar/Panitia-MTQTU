@@ -10,3 +10,4 @@ export default {
     return requestHandler(request);
   },
 } satisfies ExportedHandler<Env>;
+
