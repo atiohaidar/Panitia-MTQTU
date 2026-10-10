@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import { Outlet, useLoaderData, useFetcher, Link } from "react-router";
 import { DashboardSidebar } from "../components/dashboard-sidebar";
+import { MobileBottomNav } from "../components/bottom-nav";
 import { PasswordModal } from "../components/password-modal";
 import { requireUser, type AuthUser } from "../lib/auth.server";
 import {
@@ -13,29 +14,30 @@ import {
   type DbDivision,
   type DbMember,
 } from "../db/panitia.server";
+import { getEvents } from "../db/events.server";
+import { getDb } from "../lib/db.server";
+import { useToast } from "../components/ui/toast";
 
 export async function loader({ request }: { request: Request }) {
-  let db: D1Database | undefined;
-  try {
-    const cf = await import("cloudflare:workers");
-    db = cf.env?.DB;
-  } catch {
-    db = undefined;
-  }
-
-  // Wajib login: jika belum login, otomatis redirect ke "/"
+  const db = await getDb(request);
   const currentUser = await requireUser(request, db);
 
   let memberCount = 8;
   let divisionCount = 5;
+  let eventCount = 3;
 
   if (db) {
     try {
-      const [divs, mems] = await Promise.all([getDivisions(db), getMembers(db)]);
+      const [divs, mems, evts] = await Promise.all([
+        getDivisions(db),
+        getMembers(db),
+        getEvents(db),
+      ]);
       divisionCount = divs.length;
       memberCount = mems.length;
+      eventCount = evts.length;
     } catch (e) {
-      console.error("Failed to load counts:", e);
+      console.error("Failed to load counts in admin:", e);
     }
   }
 
@@ -43,19 +45,13 @@ export async function loader({ request }: { request: Request }) {
     currentUser,
     memberCount,
     divisionCount,
+    eventCount,
     isD1Connected: Boolean(db),
   };
 }
 
 export async function action({ request }: { request: Request }) {
-  let db: D1Database | undefined;
-  try {
-    const cf = await import("cloudflare:workers");
-    db = cf.env?.DB;
-  } catch {
-    db = undefined;
-  }
-
+  const db = await getDb(request);
   const currentUser = await requireUser(request, db);
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
@@ -73,12 +69,27 @@ export async function action({ request }: { request: Request }) {
 }
 
 export default function AdminLayout() {
-  const { currentUser, memberCount, divisionCount, isD1Connected } =
+  const { currentUser, memberCount, divisionCount, eventCount, isD1Connected } =
     useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+  const toast = useToast();
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+
+  const lastHandledData = React.useRef<any>(null);
+  React.useEffect(() => {
+    if (fetcher.data && fetcher.data !== lastHandledData.current) {
+      lastHandledData.current = fetcher.data;
+      if (fetcher.data.message) {
+        if (fetcher.data.success) {
+          toast.success(fetcher.data.message);
+        } else {
+          toast.error(fetcher.data.message);
+        }
+      }
+    }
+  }, [fetcher.data, toast]);
 
   const handleSaveMyPassword = (newPass: string) => {
     fetcher.submit(
@@ -97,13 +108,14 @@ export default function AdminLayout() {
         currentUser={currentUser}
         memberCount={memberCount}
         divisionCount={divisionCount}
+        eventCount={eventCount}
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
         onOpenPasswordModal={() => setPasswordModalOpen(true)}
       />
 
       {/* ── Main Content Area ───────────────────────────────────────── */}
-      <div className="flex-1 min-w-0 flex flex-col min-h-screen">
+      <div className="flex-1 min-w-0 flex flex-col min-h-screen pb-20 md:pb-0">
         <Outlet
           context={{
             currentUser,
@@ -112,6 +124,9 @@ export default function AdminLayout() {
           }}
         />
       </div>
+
+      {/* ── Mobile Bottom Navigation Bar (Thumb-Friendly) ───────────── */}
+      <MobileBottomNav onOpenMobileMenu={() => setMobileSidebarOpen(true)} />
 
       {/* ── Modal Ganti Password Sendiri ───────────────────────────── */}
       <PasswordModal

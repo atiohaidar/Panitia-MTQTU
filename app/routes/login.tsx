@@ -42,31 +42,36 @@ export async function action({ request }: { request: Request }) {
   }
 
   const formData = await request.formData();
-  const identifier = (formData.get("identifier") as string) || "";
-  const password = (formData.get("password") as string) || "";
+  const email = (
+    (formData.get("email") as string) ||
+    (formData.get("identifier") as string) ||
+    ""
+  ).trim();
+  const password = ((formData.get("password") as string) || "").trim();
 
-  if (!identifier.trim() || !password.trim()) {
-    return { error: "NIM / Email dan kata sandi wajib diisi." };
+  if (!email || !password) {
+    return { error: "Email dan kata sandi wajib diisi." };
   }
 
   if (db) {
-    const user = await authenticateUser(db, identifier, password);
+    const user = await authenticateUser(db, email, password);
     if (!user) {
       return {
-        error: "NIM / Email atau kata sandi tidak cocok. Silakan periksa kembali.",
+        error: "Email atau kata sandi tidak cocok. Silakan periksa kembali.",
       };
     }
     return createLoginResponse(user.id, "/admin");
   } else {
     // Fallback autentikasi jika DB lokal belum terhubung
+    const cleanEmail = email.toLowerCase();
     if (
-      (identifier === "1301220001" || identifier === "admin@telkomuniversity.ac.id") &&
-      (password === "mtq2026-admin" || password === "mtq2026-0001")
+      (cleanEmail === "admin@gmail.ac.id" || cleanEmail === "1301220001") &&
+      (password === "mtq2026-admin" || password === "1301220001")
     ) {
       return createLoginResponse("usr-1", "/admin");
     }
     return {
-      error: "NIM / Email atau kata sandi tidak cocok. Silakan periksa kembali.",
+      error: "Email atau kata sandi tidak cocok. Silakan periksa kembali.",
     };
   }
 }
@@ -77,7 +82,7 @@ export default function LoginPage() {
   const isSubmitting = navigation.state === "submitting";
 
   const [showPassword, setShowPassword] = useState(false);
-  const [identifier, setIdentifier] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
 
@@ -135,7 +140,7 @@ export default function LoginPage() {
             Assalamu&apos;alaikum, Panitia.
           </h1>
           <p className="mt-2 text-[15px] text-stone-500">
-            Masuk dengan akun panitia yang terdaftar di sistem.
+            Masuk dengan email akun panitia. Kata sandi default adalah NIM Anda.
           </p>
 
           {/* Alert Error jika login gagal */}
@@ -153,18 +158,18 @@ export default function LoginPage() {
 
           <Form method="post" className="mt-8 space-y-4">
             <div className="space-y-1.5">
-              <label htmlFor="identifier" className="block text-sm font-medium text-stone-700">
-                NIM
+              <label htmlFor="email" className="block text-sm font-medium text-stone-700">
+                Email Panitia
               </label>
               <input
-                id="identifier"
-                name="identifier"
-                type="text"
-                autoComplete="username"
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
                 required
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="masukan nim"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nama@gmail.ac.id atau gmail"
                 className={inputClass}
               />
             </div>
@@ -178,7 +183,7 @@ export default function LoginPage() {
                   href="#forgot"
                   onClick={(e) => {
                     e.preventDefault();
-                    alert("Silakan hubungi Super Admin untuk mereset kata sandi Anda.");
+                    alert("Kata sandi awal akun panitia adalah NIM Anda. Jika Anda sudah pernah menggantinya dan lupa, silakan hubungi Super Admin untuk mereset.");
                   }}
                   className="text-xs text-stone-500 hover:text-stone-800 hover:underline"
                 >
@@ -194,7 +199,7 @@ export default function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Masukkan kata sandi"
+                  placeholder="Masukkan kata sandi (default NIM)"
                   className={`${inputClass} pr-11 font-mono`}
                 />
                 <button

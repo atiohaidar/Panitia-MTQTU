@@ -1,7 +1,7 @@
 // app/routes/admin.panitia.tsx
 // Halaman Manajemen Panitia dengan Import Spreadsheet Modal dan D1 Database
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useLoaderData, useFetcher, useOutletContext } from "react-router";
 import {
   Users,
@@ -16,9 +16,12 @@ import {
   Check,
   Bell,
   Menu,
+  Mail,
+  MessageSquare,
 } from "lucide-react";
 import { requireUser } from "../lib/auth.server";
-import { canManageMembers } from "../lib/rbac";
+import { getDb } from "../lib/db.server";
+import { canManageMembers, canViewSensitiveMemberInfo } from "../lib/rbac";
 import type { AuthUser } from "../types/panitia";
 import {
   getDivisions,
@@ -34,6 +37,8 @@ import {
 import { ImportSpreadsheetModal } from "../components/import-spreadsheet-modal";
 import { MemberModal } from "../components/member-modal";
 import { PasswordModal } from "../components/password-modal";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { useToast } from "../components/ui/toast";
 
 export function meta() {
   return [
@@ -90,14 +95,7 @@ const ROLE_CONFIG: Record<
 };
 
 export async function loader({ request }: { request: Request }) {
-  let db: D1Database | undefined;
-  try {
-    const cf = await import("cloudflare:workers");
-    db = cf.env?.DB;
-  } catch {
-    db = undefined;
-  }
-
+  const db = await getDb(request);
   const currentUser = await requireUser(request, db);
 
   let rawDivisions: DbDivision[] = [];
@@ -107,7 +105,7 @@ export async function loader({ request }: { request: Request }) {
     try {
       [rawDivisions, rawMembers] = await Promise.all([getDivisions(db), getMembers(db)]);
     } catch (e) {
-      console.error("D1 loader error:", e);
+      console.error("D1 loader error in panitia:", e);
     }
   }
 
@@ -118,11 +116,13 @@ export async function loader({ request }: { request: Request }) {
     colorBadge: d.color_badge,
   }));
 
+  const canViewSensitive = canViewSensitiveMemberInfo(currentUser);
+
   const members: CommitteeMember[] = rawMembers.map((m) => ({
     id: m.id,
-    nim: m.nim,
+    nim: canViewSensitive || m.id === currentUser.id ? m.nim : "—",
     name: m.name,
-    email: m.email,
+    email: canViewSensitive || m.id === currentUser.id ? m.email : "",
     phone: m.phone,
     divisionId: m.division_id,
     role: m.role as CommitteeRole,
@@ -130,18 +130,11 @@ export async function loader({ request }: { request: Request }) {
     createdAt: m.created_at,
   }));
 
-  return { currentUser, divisions, members, isD1Connected: Boolean(db) };
+  return { currentUser, divisions, members, canViewSensitive, isD1Connected: Boolean(db) };
 }
 
 export async function action({ request }: { request: Request }) {
-  let db: D1Database | undefined;
-  try {
-    const cf = await import("cloudflare:workers");
-    db = cf.env?.DB;
-  } catch {
-    db = undefined;
-  }
-
+  const db = await getDb(request);
   const currentUser = await requireUser(request, db);
 
   // RBAC: Hanya Super Admin yang berhak memodifikasi data panitia
@@ -169,6 +162,10 @@ export async function action({ request }: { request: Request }) {
         const divisionId = formData.get("divisionId") as string;
         const role = formData.get("role") as string;
 
+        if (!email || !email.trim()) {
+          return { success: false, message: "Email panitia wajib diisi untuk akun masuk." };
+        }
+
         await createMember(db, {
           nim,
           name,
@@ -189,6 +186,10 @@ export async function action({ request }: { request: Request }) {
         const phone = formData.get("phone") as string;
         const divisionId = formData.get("divisionId") as string;
         const role = formData.get("role") as string;
+
+        if (!email || !email.trim()) {
+          return { success: false, message: "Email panitia wajib diisi untuk akun masuk." };
+        }
 
         await updateMember(db, id, {
           nim,
@@ -220,6 +221,15 @@ export async function action({ request }: { request: Request }) {
       case "BATCH_IMPORT": {
         const payloadJson = formData.get("payload") as string;
         const rows = JSON.parse(payloadJson);
+
+        const missingEmail = rows.find((r: any) => !r.email || !r.email.trim());
+        if (missingEmail) {
+          return {
+            success: false,
+            message: `Email wajib diisi! Data untuk ${missingEmail.name || missingEmail.nim} tidak memiliki email.`,
+          };
+        }
+
         const result = await batchInsertMembers(
           db,
           rows.map((r: any) => ({
@@ -254,6 +264,7 @@ export default function AdminPanitiaPage() {
   }>();
 
   const canManage = canManageMembers(loaderData.currentUser);
+  const canViewSensitive = loaderData.canViewSensitive;
   const [divisions, setDivisions] = useState<Division[]>(loaderData.divisions);
   const [members, setMembers] = useState<CommitteeMember[]>(loaderData.members);
 
@@ -267,31 +278,28 @@ export default function AdminPanitiaPage() {
   const [selectedDivisionFilter, setSelectedDivisionFilter] = useState("ALL");
   const [selectedRoleFilter, setSelectedRoleFilter] = useState("ALL");
 
-  // Toasts
-  const [toastMessage, setToastMessage] = useState<{
-    text: string;
-    type: "success" | "error";
-  } | null>(null);
-
-  const showToast = (text: string, type: "success" | "error" = "success") => {
-    setToastMessage({ text, type });
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  // Centralized Toast
+  const toast = useToast();
+  const lastHandledData = useRef<any>(null);
 
   useEffect(() => {
-    if (fetcher.data) {
-      if (fetcher.data.success) {
-        showToast(fetcher.data.message, "success");
-      } else {
-        showToast(fetcher.data.message || "Gagal melakukan aksi", "error");
+    if (fetcher.data && fetcher.data !== lastHandledData.current) {
+      lastHandledData.current = fetcher.data;
+      if (fetcher.data.message) {
+        if (fetcher.data.success) {
+          toast.success(fetcher.data.message);
+        } else {
+          toast.error(fetcher.data.message);
+        }
       }
     }
-  }, [fetcher.data]);
+  }, [fetcher.data, toast]);
 
   // Modals state
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [memberModalOpen, setMemberModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<CommitteeMember | null>(null);
+  const [deletingMember, setDeletingMember] = useState<CommitteeMember | null>(null);
 
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [targetPasswordMember, setTargetPasswordMember] = useState<CommitteeMember | null>(null);
@@ -337,17 +345,21 @@ export default function AdminPanitiaPage() {
   };
 
   const handleDeleteMember = (member: CommitteeMember) => {
-    if (confirm(`Yakin ingin menghapus panitia "${member.name}" (${member.nim})?`)) {
-      fetcher.submit(
-        {
-          intent: "DELETE_MEMBER",
-          id: member.id,
-          name: member.name,
-        },
-        { method: "POST" }
-      );
-      setMembers((prev) => prev.filter((m) => m.id !== member.id));
-    }
+    setDeletingMember(member);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deletingMember) return;
+    fetcher.submit(
+      {
+        intent: "DELETE_MEMBER",
+        id: deletingMember.id,
+        name: deletingMember.name,
+      },
+      { method: "POST" }
+    );
+    setMembers((prev) => prev.filter((m) => m.id !== deletingMember.id));
+    setDeletingMember(null);
   };
 
   const handleSavePassword = (newPassword: string) => {
@@ -379,85 +391,71 @@ export default function AdminPanitiaPage() {
     return members.filter((m) => {
       const matchSearch =
         m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.nim.includes(searchQuery) ||
-        m.email.toLowerCase().includes(searchQuery.toLowerCase());
+        (canViewSensitive && m.nim.includes(searchQuery)) ||
+        (canViewSensitive && m.email.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchDiv = selectedDivisionFilter === "ALL" || m.divisionId === selectedDivisionFilter;
       const matchRole = selectedRoleFilter === "ALL" || m.role === selectedRoleFilter;
       return matchSearch && matchDiv && matchRole;
     });
-  }, [members, searchQuery, selectedDivisionFilter, selectedRoleFilter]);
+  }, [members, searchQuery, selectedDivisionFilter, selectedRoleFilter, canViewSensitive]);
 
   return (
-    <div className="flex-1 min-w-0 bg-mtq-canvas">
-      {/* Toast Alert */}
-      {toastMessage && (
-        <div
-          className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg border text-xs font-semibold animate-in fade-in ${
-            toastMessage.type === "success"
-              ? "bg-emerald-950 text-white border-emerald-700"
-              : "bg-rose-950 text-white border-rose-700"
-          }`}
-        >
-          {toastMessage.type === "success" ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          ) : (
-            <XCircle className="h-4 w-4 text-rose-400" />
-          )}
-          <span>{toastMessage.text}</span>
-        </div>
-      )}
+    <div className="flex-1 min-w-0 bg-mtq-canvas pb-24 sm:pb-12">
 
       {/* ── Top Bar ────────────────────────────────────────────────── */}
-      <div className="flex h-14 items-center justify-between border-b border-stone-200 bg-white px-5">
-        <div className="flex items-center gap-2.5">
+      {/* ── Top Bar ────────────────────────────────────────────────── */}
+      <div className="flex h-14 items-center justify-between border-b border-stone-200 bg-white px-4 sm:px-5">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={onToggleMobileSidebar}
-            className="md:hidden p-1.5 -ml-1 text-stone-500 hover:text-stone-800 rounded-md"
+            className="md:hidden p-2 -ml-1.5 text-stone-500 hover:text-stone-800 rounded-md min-h-[40px] min-w-[40px] flex items-center justify-center"
             aria-label="Menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <p className="text-sm text-stone-500">
+          <p className="text-xs sm:text-sm text-stone-500 truncate">
             Panitia <span className="text-stone-300">/</span>{" "}
             <span className="text-stone-900 font-medium">Panitia</span>
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {loaderData.isD1Connected ? (
-            <span className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-mono text-[11px] text-emerald-800">
-              d1 database aktif
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 font-mono text-[11px] text-emerald-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
+              <span className="hidden sm:inline">d1 database aktif</span>
             </span>
           ) : (
-            <span className="rounded border border-dashed border-stone-300 px-1.5 py-0.5 font-mono text-[11px] text-stone-500">
-              data contoh
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-stone-400" />
+              <span className="hidden sm:inline">data contoh</span>
             </span>
           )}
-          <button className="btn btn-ghost btn-sm px-2" aria-label="Notifikasi">
+          <button className="btn btn-ghost btn-sm px-2 min-h-[40px] min-w-[40px] flex items-center justify-center" aria-label="Notifikasi">
             <Bell className="h-4 w-4" />
           </button>
         </div>
       </div>
 
       {/* ── Main Container ─────────────────────────────────────────── */}
-      <div className="space-y-5 p-5 max-w-6xl">
+      <div className="space-y-5 p-4 sm:p-5 max-w-6xl">
         {/* Header Title & Actions */}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="font-serif text-3xl font-medium tracking-tight text-stone-900">
+            <h1 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-stone-900">
               Data panitia
             </h1>
-            <p className="mt-1 text-sm text-stone-500">
+            <p className="mt-1 text-xs sm:text-sm text-stone-500">
               Kelola penugasan divisi, hak akses peran, dan seluruh akun panitia MTQ Tel-U 2026.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {canManage ? (
               <>
                 <button
                   onClick={() => setImportModalOpen(true)}
-                  className="btn btn-secondary"
+                  className="btn btn-secondary flex-1 sm:flex-initial"
                 >
                   <ClipboardPaste className="h-4 w-4 text-stone-500" />
                   <span>Import spreadsheet</span>
@@ -468,7 +466,7 @@ export default function AdminPanitiaPage() {
                     setEditingMember(null);
                     setMemberModalOpen(true);
                   }}
-                  className="btn btn-primary"
+                  className="btn btn-primary flex-1 sm:flex-initial"
                 >
                   <Plus className="h-4 w-4" />
                   <span>Tambah anggota</span>
@@ -488,7 +486,11 @@ export default function AdminPanitiaPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
             <input
               type="text"
-              placeholder="Cari nama panitia, NIM, atau email..."
+              placeholder={
+                canViewSensitive
+                  ? "Cari nama panitia, NIM, atau email..."
+                  : "Cari nama panitia atau divisi..."
+              }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:border-mtq-crimson bg-[#fafaf9]"
@@ -539,15 +541,15 @@ export default function AdminPanitiaPage() {
           </div>
         </div>
 
-        {/* ── Table Panitia ────────────────────────────────────────── */}
-        <div className="bg-white rounded-xl border border-stone-200 shadow-2xs overflow-hidden">
+        {/* ── Table Panitia (Tampilan Desktop: hidden md:block) ────── */}
+        <div className="hidden md:block bg-white rounded-xl border border-stone-200 shadow-2xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-[#fafaf9] border-b border-stone-200 text-stone-600 font-semibold uppercase text-[11px]">
                 <tr>
                   <th className="px-4 py-3">Panitia</th>
-                  <th className="px-4 py-3">NIM</th>
-                  <th className="px-4 py-3">Email (Gmail)</th>
+                  {canViewSensitive && <th className="px-4 py-3">NIM</th>}
+                  {canViewSensitive && <th className="px-4 py-3">Email (Gmail)</th>}
                   <th className="px-4 py-3">Divisi</th>
                   <th className="px-4 py-3">Role / Jabatan</th>
                   <th className="px-4 py-3">Kontak WA</th>
@@ -557,7 +559,7 @@ export default function AdminPanitiaPage() {
               <tbody className="divide-y divide-stone-100">
                 {filteredMembers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-stone-400">
+                    <td colSpan={canViewSensitive ? 7 : 5} className="px-4 py-12 text-center text-stone-400">
                       <Users className="h-8 w-8 mx-auto text-stone-300 mb-2" />
                       <p className="font-semibold text-stone-600">Tidak ada data panitia</p>
                       <p className="text-xs text-stone-400 mt-0.5">
@@ -580,16 +582,20 @@ export default function AdminPanitiaPage() {
                             <p className="font-semibold text-stone-900">{member.name}</p>
                           </div>
                         </td>
-                        <td className="px-4 py-3 font-mono font-medium text-stone-700">
-                          {member.nim}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-xs text-stone-600">
-                          {member.email ? (
-                            member.email
-                          ) : (
-                            <span className="italic text-stone-400 text-[11px]">Dikosongkan</span>
-                          )}
-                        </td>
+                        {canViewSensitive && (
+                          <td className="px-4 py-3 font-mono font-medium text-stone-700">
+                            {member.nim}
+                          </td>
+                        )}
+                        {canViewSensitive && (
+                          <td className="px-4 py-3 font-mono text-xs text-stone-600">
+                            {member.email ? (
+                              member.email
+                            ) : (
+                              <span className="italic text-stone-400 text-[11px]">Dikosongkan</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-stone-700 whitespace-nowrap">
                           {div?.name || "Belum ada divisi"}
                         </td>
@@ -618,7 +624,7 @@ export default function AdminPanitiaPage() {
                                   setPasswordModalOpen(true);
                                 }}
                                 title="Ganti Password"
-                                className="p-1.5 text-stone-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition"
+                                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-stone-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition"
                               >
                                 <KeyRound className="h-3.5 w-3.5" />
                               </button>
@@ -628,14 +634,14 @@ export default function AdminPanitiaPage() {
                                   setMemberModalOpen(true);
                                 }}
                                 title="Edit Data Panitia"
-                                className="p-1.5 text-stone-400 hover:text-mtq-crimson hover:bg-rose-50 rounded-md transition"
+                                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-stone-400 hover:text-mtq-crimson hover:bg-rose-50 rounded-md transition"
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => handleDeleteMember(member)}
                                 title="Hapus Panitia"
-                                className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition"
+                                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -661,6 +667,152 @@ export default function AdminPanitiaPage() {
             <span className="text-[11px] text-stone-400">Tersinkronisasi ke D1 Database</span>
           </div>
         </div>
+
+        {/* ── Mobile Card List View (Khusus Layar Smartphone: md:hidden) ─ */}
+        <div className="md:hidden space-y-3">
+          {filteredMembers.length === 0 ? (
+            <div className="bg-white rounded-xl border border-stone-200 p-8 text-center text-stone-400">
+              <Users className="h-8 w-8 mx-auto text-stone-300 mb-2" />
+              <p className="font-semibold text-stone-700">Tidak ada data panitia</p>
+              <p className="text-xs text-stone-400 mt-0.5">
+                Sesuaikan kata kunci pencarian atau filter.
+              </p>
+            </div>
+          ) : (
+            filteredMembers.map((member) => {
+              const div = divisions.find((d) => d.id === member.divisionId);
+              const roleMeta = ROLE_CONFIG[member.role] || ROLE_CONFIG.ANGGOTA;
+              const cleanPhone = member.phone?.replace(/[^0-9]/g, "");
+              const waUrl = cleanPhone
+                ? `https://wa.me/${cleanPhone.startsWith("0") ? "62" + cleanPhone.slice(1) : cleanPhone}`
+                : null;
+
+              return (
+                <div
+                  key={member.id}
+                  className="bg-white rounded-xl p-4 border border-stone-200 shadow-2xs space-y-3"
+                >
+                  {/* Baris Atas: Avatar + Nama + NIM + Role Badge */}
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="h-9 w-9 rounded-full bg-rose-50 text-mtq-crimson font-bold text-xs flex items-center justify-center shrink-0 border border-rose-200">
+                        {member.name.charAt(0)}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-stone-900 text-sm leading-snug truncate">
+                          {member.name}
+                        </p>
+                        {canViewSensitive && (
+                          <p className="font-mono text-xs text-stone-500">
+                            {member.nim}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md border shrink-0 ${
+                        member.role === "SUPER_ADMIN"
+                          ? "bg-rose-50 border-rose-200 text-mtq-crimson font-semibold"
+                          : "bg-stone-50 border-stone-200 text-stone-700 font-medium"
+                      }`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${roleMeta.dot}`} />
+                      {roleMeta.label}
+                    </span>
+                  </div>
+
+                  {/* Divisi & Email */}
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-medium text-[11px]">
+                      {div?.name || "Belum ada divisi"}
+                    </span>
+                    {canViewSensitive && member.email && (
+                      <a
+                        href={`mailto:${member.email}`}
+                        className="inline-flex items-center gap-1 text-[11px] font-mono text-stone-600 bg-stone-50 border border-stone-200 px-2 py-0.5 rounded hover:text-stone-900"
+                      >
+                        <Mail className="h-3 w-3 text-stone-400" />
+                        <span className="truncate max-w-[170px]">{member.email}</span>
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Baris Aksi Jempol-Friendly (Touch Targets >= 40px) */}
+                  <div className="pt-2.5 border-t border-stone-100 flex items-center justify-between gap-2">
+                    {/* Chat WhatsApp Direct */}
+                    {waUrl ? (
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg min-h-[40px] transition"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        <span>Chat WA</span>
+                      </a>
+                    ) : (
+                      <span className="text-[11px] text-stone-400 italic">
+                        Tanpa no. WA
+                      </span>
+                    )}
+
+                    {canManage ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTargetPasswordMember(member);
+                            setPasswordModalOpen(true);
+                          }}
+                          className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center text-stone-600 hover:text-amber-700 bg-stone-50 hover:bg-amber-50 border border-stone-200 rounded-lg transition"
+                          title="Ganti Password"
+                          aria-label={`Ganti password ${member.name}`}
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingMember(member);
+                            setMemberModalOpen(true);
+                          }}
+                          className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center text-stone-600 hover:text-mtq-crimson bg-stone-50 hover:bg-rose-50 border border-stone-200 rounded-lg transition"
+                          title="Edit Data Panitia"
+                          aria-label={`Edit ${member.name}`}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMember(member)}
+                          className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center text-stone-600 hover:text-rose-700 bg-stone-50 hover:bg-rose-50 border border-stone-200 rounded-lg transition"
+                          title="Hapus Panitia"
+                          aria-label={`Hapus ${member.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                        Akun Aktif
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+
+          {/* Footer Counter Khusus Mobile */}
+          <div className="p-3 bg-white rounded-xl border border-stone-200 text-xs text-stone-500 flex items-center justify-between">
+            <span>
+              Menampilkan <strong>{filteredMembers.length}</strong> dari {members.length} panitia
+            </span>
+            <span className="text-[11px] text-stone-400">D1 Sync</span>
+          </div>
+        </div>
       </div>
 
       {/* ── Modals Modular ─────────────────────────────────────────── */}
@@ -669,6 +821,7 @@ export default function AdminPanitiaPage() {
         onClose={() => setImportModalOpen(false)}
         divisions={divisions}
         existingNims={members.map((m) => m.nim)}
+        existingEmails={members.map((m) => (m.email || "").toLowerCase())}
         onCommit={handleCommitBatchImport}
       />
 
@@ -692,6 +845,25 @@ export default function AdminPanitiaPage() {
           onSave={handleSavePassword}
         />
       )}
+
+      {/* ── Dialog Konfirmasi Hapus Panitia Terpusat ───────────────── */}
+      <ConfirmDialog
+        isOpen={Boolean(deletingMember)}
+        onClose={() => setDeletingMember(null)}
+        onConfirm={handleConfirmDelete}
+        title="Hapus Data Panitia"
+        message={
+          <span>
+            Apakah Anda yakin ingin menghapus panitia{" "}
+            <strong className="text-stone-900 font-semibold">
+              "{deletingMember?.name}" ({deletingMember?.nim})
+            </strong>
+            ? Akun dan data panitia ini akan dinonaktifkan dari sistem.
+          </span>
+        }
+        confirmLabel="Hapus Panitia"
+        variant="danger"
+      />
     </div>
   );
 }

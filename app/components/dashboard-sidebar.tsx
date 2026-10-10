@@ -20,6 +20,7 @@ interface DashboardSidebarProps {
   currentUser: AuthUser;
   memberCount: number;
   divisionCount: number;
+  eventCount?: number;
   mobileOpen: boolean;
   onCloseMobile: () => void;
   onOpenPasswordModal?: () => void;
@@ -29,6 +30,7 @@ export function DashboardSidebar({
   currentUser,
   memberCount,
   divisionCount,
+  eventCount,
   mobileOpen,
   onCloseMobile,
   onOpenPasswordModal,
@@ -40,7 +42,7 @@ export function DashboardSidebar({
     { label: "Ringkasan", icon: LayoutDashboard, to: "/admin" },
     { label: "Panitia", icon: Users, count: memberCount, to: "/admin/panitia" },
     { label: "Divisi", icon: Layers, count: divisionCount, to: "/admin/divisi" },
-    { label: "Agenda", icon: CalendarDays, to: "/admin/agenda" },
+    { label: "Agenda", icon: CalendarDays, count: eventCount, to: "/admin/agenda" },
     { label: "Dokumen", icon: FileText, to: "/admin/dokumen" },
   ];
 

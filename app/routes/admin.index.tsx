@@ -5,7 +5,12 @@ import React from "react";
 import { Link, useLoaderData, useOutletContext } from "react-router";
 import { Plus, Bell, Menu, ExternalLink, Calendar, Users, Layers, ChevronRight } from "lucide-react";
 import { requireUser, type AuthUser } from "../lib/auth.server";
+import { getDb } from "../lib/db.server";
 import { getDivisions, getMembers, type DbDivision, type DbMember } from "../db/panitia.server";
+import { getEvents } from "../db/events.server";
+import type { CommitteeEvent } from "../types/panitia";
+import { getEventEffectiveStatus } from "../lib/event-utils";
+import { canViewSensitiveMemberInfo } from "../lib/rbac";
 
 export function meta() {
   return [
@@ -17,61 +22,66 @@ export function meta() {
   ];
 }
 
-export async function loader({ request }: { request: Request }) {
-  let db: D1Database | undefined;
-  try {
-    const cf = await import("cloudflare:workers");
-    db = cf.env?.DB;
-  } catch {
-    db = undefined;
-  }
+const MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+  "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+];
 
+export async function loader({ request }: { request: Request }) {
+  const db = await getDb(request);
   const currentUser = await requireUser(request, db);
 
   let divisions: DbDivision[] = [];
   let members: DbMember[] = [];
+  let rawEvents: CommitteeEvent[] = [];
 
   if (db) {
     try {
-      [divisions, members] = await Promise.all([getDivisions(db), getMembers(db)]);
+      [divisions, members, rawEvents] = await Promise.all([
+        getDivisions(db),
+        getMembers(db),
+        getEvents(db),
+      ]);
     } catch (e) {
       console.error("Failed to load dashboard data:", e);
     }
   }
 
-  // Agenda terdekat MTQ Tel-U 2026
-  const agendaList = [
-    {
-      tgl: "17",
-      bln: "Okt",
-      judul: "Wawancara gelombang 2",
-      info: "08.00 · Gedung TULT lt. 6",
-    },
-    {
-      tgl: "20",
-      bln: "Okt",
-      judul: "Pengumuman kelulusan panitia",
-      info: "19.00 · Instagram & portal resmi",
-    },
-    {
-      tgl: "24",
-      bln: "Okt",
-      judul: "Rapat perdana pleno kepanitiaan",
-      info: "13.00 · Masjid Syamsul Ulum Tel-U",
-    },
-  ];
+  // Agenda terdekat MTQ Tel-U 2026 dari D1
+  const agendaList = rawEvents.slice(0, 3).map((ev) => {
+    const parts = ev.date.split("-");
+    const day = parts[2] || "01";
+    const month = MONTH_NAMES[parseInt(parts[1] || "10", 10) - 1] || "Okt";
+    const status = getEventEffectiveStatus(ev);
+    return {
+      id: ev.id,
+      tgl: day,
+      bln: month,
+      judul: ev.title,
+      info: `${ev.startTime} · ${ev.location}`,
+      status,
+    };
+  });
+
+  const canViewSensitive = canViewSensitiveMemberInfo(currentUser);
+  const sanitizedMembers = members.map((m) => ({
+    ...m,
+    nim: canViewSensitive || m.id === currentUser.id ? m.nim : "—",
+    email: canViewSensitive || m.id === currentUser.id ? m.email : null,
+  }));
 
   return {
     currentUser,
     divisions,
-    members,
+    members: sanitizedMembers,
+    canViewSensitive,
     agendaList,
     isD1Connected: Boolean(db),
   };
 }
 
 export default function AdminIndexPage() {
-  const { currentUser, divisions, members, agendaList, isD1Connected } = useLoaderData<typeof loader>();
+  const { currentUser, divisions, members, canViewSensitive, agendaList, isD1Connected } = useLoaderData<typeof loader>();
   const canManage = currentUser.role === "SUPER_ADMIN";
   const { onToggleMobileSidebar } = useOutletContext<{
     onToggleMobileSidebar: () => void;
@@ -129,55 +139,58 @@ export default function AdminIndexPage() {
   return (
     <div className="flex-1 min-w-0 bg-mtq-canvas">
       {/* ── Top Bar (Sesuai Styleguide) ────────────────────────────── */}
-      <div className="flex h-14 items-center justify-between border-b border-stone-200 bg-white px-5">
-        <div className="flex items-center gap-2.5">
+      {/* ── Top Bar (Sesuai Styleguide) ────────────────────────────── */}
+      <div className="flex h-14 items-center justify-between border-b border-stone-200 bg-white px-4 sm:px-5">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={onToggleMobileSidebar}
-            className="md:hidden p-1.5 -ml-1 text-stone-500 hover:text-stone-800 rounded-md"
+            className="md:hidden p-2 -ml-1.5 text-stone-500 hover:text-stone-800 rounded-md min-h-[40px] min-w-[40px] flex items-center justify-center"
             aria-label="Menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <p className="text-sm text-stone-500">
+          <p className="text-xs sm:text-sm text-stone-500 truncate">
             Panitia <span className="text-stone-300">/</span>{" "}
             <span className="text-stone-900 font-medium">Ringkasan</span>
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {isD1Connected ? (
-            <span className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-mono text-[11px] text-emerald-800">
-              d1 database aktif
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 font-mono text-[11px] text-emerald-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
+              <span className="hidden sm:inline">d1 database aktif</span>
             </span>
           ) : (
-            <span className="rounded border border-dashed border-stone-300 px-1.5 py-0.5 font-mono text-[11px] text-stone-500">
-              data contoh
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-stone-300 px-2 py-0.5 font-mono text-[11px] text-stone-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-stone-400" />
+              <span className="hidden sm:inline">data contoh</span>
             </span>
           )}
-          <button className="btn btn-ghost btn-sm px-2" aria-label="Notifikasi">
+          <button className="btn btn-ghost btn-sm px-2 min-h-[40px] min-w-[40px] flex items-center justify-center" aria-label="Notifikasi">
             <Bell className="h-4 w-4" />
           </button>
         </div>
       </div>
 
       {/* ── Main Container ─────────────────────────────────────────── */}
-      <div className="space-y-5 p-5 max-w-6xl">
+      <div className="space-y-5 p-4 sm:p-5 max-w-6xl">
         {/* Header Title & Action Button */}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="font-serif text-3xl font-medium tracking-tight text-stone-900">
+            <h1 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-stone-900">
               Ringkasan kepanitiaan
             </h1>
-            <p className="mt-1 text-sm text-stone-500">
+            <p className="mt-1 text-xs sm:text-sm text-stone-500">
               Monitoring data pendaftar, alokasi divisi, dan agenda persiapan MTQ Tel-U 2026.
             </p>
           </div>
           {canManage ? (
-            <Link to="/admin/panitia" className="btn btn-primary">
+            <Link to="/admin/panitia" className="btn btn-primary w-full sm:w-auto">
               <Plus className="h-4 w-4" /> Tambah anggota
             </Link>
           ) : (
-            <Link to="/admin/panitia" className="btn btn-secondary">
+            <Link to="/admin/panitia" className="btn btn-secondary w-full sm:w-auto">
               Lihat direktori panitia
             </Link>
           )}
@@ -244,12 +257,21 @@ export default function AdminIndexPage() {
             <div>
               <div className="flex items-baseline justify-between border-b border-stone-100 pb-2.5">
                 <h2 className="font-semibold text-stone-900 text-sm">Agenda terdekat</h2>
-                <Link
-                  to="/admin/panitia"
-                  className="text-xs text-stone-400 hover:text-stone-700 transition"
-                >
-                  Lihat jadwal
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/admin/agenda/baru"
+                    className="text-xs font-semibold text-mtq-crimson hover:underline transition"
+                  >
+                    + Buat agenda
+                  </Link>
+                  <span className="text-stone-300">·</span>
+                  <Link
+                    to="/admin/agenda"
+                    className="text-xs text-stone-400 hover:text-stone-700 transition"
+                  >
+                    Lihat jadwal
+                  </Link>
+                </div>
               </div>
               <ul className="mt-3 divide-y divide-stone-100">
                 {agendaList.map((a, idx) => (
@@ -262,10 +284,18 @@ export default function AdminIndexPage() {
                         {a.bln}
                       </span>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-stone-900 leading-snug">
-                        {a.judul}
-                      </p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs font-semibold text-stone-900 leading-snug">
+                          {a.judul}
+                        </p>
+                        {a.status === "ONGOING" && (
+                          <span className="inline-flex items-center gap-1.5 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800 shrink-0">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 shrink-0" />
+                            Sedang berlangsung
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-stone-500 mt-0.5">{a.info}</p>
                     </div>
                   </li>
@@ -302,7 +332,7 @@ export default function AdminIndexPage() {
               <thead className="bg-[#fafaf9] border-b border-stone-200 text-stone-600 font-semibold uppercase text-[11px]">
                 <tr>
                   <th className="px-4 py-3">Panitia</th>
-                  <th className="px-4 py-3">NIM</th>
+                  {canViewSensitive && <th className="px-4 py-3">NIM</th>}
                   <th className="px-4 py-3">Divisi</th>
                   <th className="px-4 py-3">Role</th>
                   <th className="px-4 py-3">No. WhatsApp</th>
@@ -316,12 +346,16 @@ export default function AdminIndexPage() {
                       <td className="px-4 py-3 font-semibold text-stone-900">
                         <div>
                           <p>{m.name}</p>
-                          <p className="text-[11px] font-normal text-stone-400">
-                            {m.email ? m.email : <span className="italic text-stone-300">Tanpa email</span>}
-                          </p>
+                          {canViewSensitive && (
+                            <p className="text-[11px] font-normal text-stone-400">
+                              {m.email ? m.email : <span className="italic text-stone-300">Tanpa email</span>}
+                            </p>
+                          )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-stone-700">{m.nim}</td>
+                      {canViewSensitive && (
+                        <td className="px-4 py-3 font-mono text-stone-700">{m.nim}</td>
+                      )}
                       <td className="px-4 py-3 text-stone-600">{div?.name || "-"}</td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-1.5 text-xs text-stone-700 font-medium">

@@ -149,7 +149,11 @@ export async function deleteDivision(db: D1Database, id: string): Promise<boolea
 export async function getMembers(db: D1Database): Promise<DbMember[]> {
   await ensureTablesExist(db);
   const result = await db
-    .prepare("SELECT * FROM committee_members ORDER BY created_at DESC")
+    .prepare(
+      `SELECT id, nim, name, email, phone, division_id, role, is_active, created_at, updated_at 
+       FROM committee_members 
+       ORDER BY created_at DESC`
+    )
     .all<DbMember>();
   return result.results || [];
 }
@@ -157,7 +161,11 @@ export async function getMembers(db: D1Database): Promise<DbMember[]> {
 export async function getMemberById(db: D1Database, id: string): Promise<DbMember | null> {
   await ensureTablesExist(db);
   const result = await db
-    .prepare("SELECT * FROM committee_members WHERE id = ?")
+    .prepare(
+      `SELECT id, nim, name, email, phone, division_id, role, is_active, created_at, updated_at 
+       FROM committee_members 
+       WHERE id = ?`
+    )
     .bind(id)
     .first<DbMember>();
   return result || null;
@@ -168,7 +176,7 @@ export async function createMember(
   data: {
     nim: string;
     name: string;
-    email?: string;
+    email: string;
     phone?: string;
     division_id: string;
     role: string;
@@ -176,22 +184,22 @@ export async function createMember(
   }
 ): Promise<DbMember> {
   const id = `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-  const email = data.email || "";
-  const phone = data.phone || "";
-  const passwordHash = data.password || data.nim;
+  const email = data.email.trim();
+  const phone = data.phone?.trim() || "";
+  const passwordHash = data.password || data.nim.trim();
 
   await db
     .prepare(
       `INSERT INTO committee_members (id, nim, name, email, phone, division_id, role, password_hash, is_active)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
     )
-    .bind(id, data.nim, data.name, email, phone, data.division_id, data.role, passwordHash)
+    .bind(id, data.nim.trim(), data.name.trim(), email, phone, data.division_id, data.role, passwordHash)
     .run();
 
   return {
     id,
-    nim: data.nim,
-    name: data.name,
+    nim: data.nim.trim(),
+    name: data.name.trim(),
     email,
     phone,
     division_id: data.division_id,
@@ -209,7 +217,7 @@ export async function updateMember(
   data: {
     nim: string;
     name: string;
-    email?: string;
+    email: string;
     phone?: string;
     division_id: string;
     role: string;
@@ -222,10 +230,10 @@ export async function updateMember(
        WHERE id = ?`
     )
     .bind(
-      data.nim,
-      data.name,
-      data.email || "",
-      data.phone || "",
+      data.nim.trim(),
+      data.name.trim(),
+      data.email.trim(),
+      data.phone?.trim() || "",
       data.division_id,
       data.role,
       id
@@ -256,7 +264,7 @@ export async function batchInsertMembers(
   members: {
     nim: string;
     name: string;
-    email?: string;
+    email: string;
     phone?: string;
     division_id: string;
     role: string;
@@ -268,9 +276,9 @@ export async function batchInsertMembers(
   const statements = [];
   for (const m of members) {
     const id = `usr-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const email = m.email || "";
-    const phone = m.phone || "";
-    const pass = m.nim; // Default kata sandi adalah NIM
+    const email = m.email.trim();
+    const phone = m.phone?.trim() || "";
+    const pass = m.nim.trim(); // Default kata sandi adalah NIM
 
     statements.push(
       db
@@ -278,7 +286,7 @@ export async function batchInsertMembers(
           `INSERT OR REPLACE INTO committee_members (id, nim, name, email, phone, division_id, role, password_hash, is_active)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
         )
-        .bind(id, m.nim, m.name, email, phone, m.division_id, m.role, pass)
+        .bind(id, m.nim.trim(), m.name.trim(), email, phone, m.division_id, m.role, pass)
     );
   }
 

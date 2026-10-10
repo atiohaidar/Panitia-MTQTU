@@ -9,5 +9,7 @@ export default [
     route("admin", "routes/admin.index.tsx"),
     route("admin/panitia", "routes/admin.panitia.tsx"),
     route("admin/divisi", "routes/admin.divisi.tsx"),
+    route("admin/agenda", "routes/admin.agenda.tsx"),
+    route("admin/agenda/baru", "routes/admin.agenda.baru.tsx"),
   ]),
 ] satisfies RouteConfig;

@@ -33,6 +33,7 @@ interface ImportSpreadsheetModalProps {
   onClose: () => void;
   divisions: Division[];
   existingNims: string[];
+  existingEmails?: string[];
   onCommit: (
     rows: {
       nim: string;
@@ -50,6 +51,7 @@ export function ImportSpreadsheetModal({
   onClose,
   divisions,
   existingNims,
+  existingEmails = [],
   onCommit,
 }: ImportSpreadsheetModalProps) {
   const [rawText, setRawText] = useState("");
@@ -111,8 +113,8 @@ export function ImportSpreadsheetModal({
         lines[0].includes("\t")
           ? lines[0].split("\t")
           : lines[0].includes(";")
-          ? lines[0].split(";")
-          : lines[0].split(",")
+            ? lines[0].split(";")
+            : lines[0].split(",")
       ).map((c) => c.trim().toLowerCase().replace(/^"|"$/g, ""));
 
       const hasHeaderKeywords = firstLineParts.some((c) =>
@@ -145,8 +147,8 @@ export function ImportSpreadsheetModal({
       const parts = line.includes("\t")
         ? line.split("\t")
         : line.includes(";")
-        ? line.split(";")
-        : line.split(",");
+          ? line.split(";")
+          : line.split(",");
 
       const cells = parts.map((c) => c.trim().replace(/^"|"$/g, ""));
 
@@ -210,10 +212,15 @@ export function ImportSpreadsheetModal({
         }
       }
 
-      // Validations: Email is completely optional (boleh kosong)
+      // Validations: NIM, Nama, dan Email wajib diisi
       const errors: string[] = [];
       if (!name) errors.push("Nama wajib diisi");
       if (!nim) errors.push("NIM wajib diisi");
+      if (!email.trim()) {
+        errors.push("Email wajib diisi (kredensial login)");
+      } else if (!email.includes("@") || !email.includes(".")) {
+        errors.push("Format email tidak valid");
+      }
 
       const matchedDiv = matchDivision(divInput);
       let status: "VALID" | "WARNING" | "INVALID" = "VALID";
@@ -230,11 +237,16 @@ export function ImportSpreadsheetModal({
         status = "WARNING";
       }
 
+      if (email && existingEmails.includes(email.toLowerCase())) {
+        errors.push(`Email ${email} sudah terdaftar di sistem`);
+        status = "WARNING";
+      }
+
       parsed.push({
         id: `parsed-${i}-${Date.now()}`,
         nim,
         name,
-        email: email.trim(), // Opsional
+        email: email.trim(),
         phone: phone.trim(),
         matchedDivisionId: matchedDiv ? matchedDiv.id : divisions[0]?.id || "acara",
         role: matchRole(roleInput),
@@ -257,11 +269,23 @@ export function ImportSpreadsheetModal({
         const errors: string[] = [];
         if (!updated.name.trim()) errors.push("Nama wajib diisi");
         if (!updated.nim.trim()) errors.push("NIM wajib diisi");
+        if (!updated.email.trim()) {
+          errors.push("Email wajib diisi (kredensial login)");
+        } else if (!updated.email.includes("@") || !updated.email.includes(".")) {
+          errors.push("Format email tidak valid");
+        }
 
         let status: "VALID" | "WARNING" | "INVALID" = "VALID";
-        if (errors.length > 0) status = "INVALID";
-        else if (existingNims.includes(updated.nim) && updated.nim !== row.nim) {
+        if (errors.length > 0) {
+          status = "INVALID";
+        } else if (existingNims.includes(updated.nim) && updated.nim !== row.nim) {
           errors.push(`NIM ${updated.nim} sudah terdaftar di sistem`);
+          status = "WARNING";
+        } else if (
+          existingEmails.includes(updated.email.toLowerCase()) &&
+          updated.email.toLowerCase() !== row.email.toLowerCase()
+        ) {
+          errors.push(`Email ${updated.email} sudah terdaftar di sistem`);
           status = "WARNING";
         }
 
@@ -309,7 +333,7 @@ export function ImportSpreadsheetModal({
                 Import Panitia dari Spreadsheet
               </h3>
               <p className="text-[11px] text-stone-500">
-                Paste data dari Google Sheets / Excel. Kolom email opsional dan kata sandi disetel ke NIM.
+                Paste data dari Google Sheets / Excel. Kolom email wajib diisi untuk login, kata sandi awal otomatis NIM.
               </p>
             </div>
           </div>
@@ -330,12 +354,12 @@ export function ImportSpreadsheetModal({
               <span>Format Kolom Tabel yang Didukung:</span>
             </div>
             <p className="text-[11px] text-amber-900">
-              Susunan: <code>NIM | Nama Lengkap | Divisi | Role | Email (Gmail) | No WhatsApp</code>.
+              Susunan: <code>NIM | Nama Lengkap | Divisi | Role | Email | No WhatsApp</code>.
             </p>
             <p className="text-[11px] text-amber-900 mt-1">
-              • <strong>Kolom Email</strong>: Bisa diisi email biasa (Gmail) atau <strong>bisa dikosongkan</strong> bila belum ada.
+              • <strong>Kolom Email</strong>: <strong>Wajib diisi</strong> karena digunakan sebagai akun login resmi panitia.
               <br />
-              • <strong>Kata Sandi</strong>: Akun baru otomatis menggunakan <strong>NIM</strong> sebagai kata sandi awal untuk diarahkan ganti sandi saat login.
+              • <strong>Kata Sandi</strong>: Akun baru otomatis menggunakan <strong>NIM</strong> sebagai kata sandi default awal saat login pertama kali.
             </p>
           </div>
 
@@ -348,13 +372,12 @@ export function ImportSpreadsheetModal({
               <button
                 type="button"
                 onClick={() => {
-                  // Contoh dengan kombinasi: ada yang ada email Gmail, ada yang email dikosongkan
-                  const sample = `1301239001\tFaiz Al-Ghifari\tDivisi Acara\tAnggota\tfaiz@gmail.com\t081299001122\n1302239002\tSafira Nur Aini\tDivisi PDD\tKetua Divisi\t\t081399002233\n1303239003\tRaka Pratama\tBroadcasting & IT\tAnggota\traka.pratama@gmail.com\t081499003344\n1304239004\tZulfa Maharani\tDivisi Logistik & Konsumsi\tSC\t\t081599004455`;
+                  const sample = `1301239001\tFaiz Al-Ghifari\tDivisi Acara\tAnggota\tfaiz@gmail.ac.id\t081299001122\n1302239002\tSafira Nur Aini\tDivisi PDD\tKetua Divisi\tsafira@gmail.com\t081399002233\n1303239003\tRaka Pratama\tBroadcasting & IT\tAnggota\traka.pratama@telkomuniversity.ac.id\t081499003344\n1304239004\tZulfa Maharani\tDivisi Logistik & Konsumsi\tSC\tzulfa@gmail.com\t081599004455`;
                   setRawText(sample);
                 }}
                 className="text-[11px] font-semibold text-mtq-crimson hover:underline"
               >
-                Gunakan Contoh Data (Ada Email & Email Kosong)
+                Gunakan Contoh Data (Lengkap dengan Email)
               </button>
             </div>
 
@@ -362,7 +385,7 @@ export function ImportSpreadsheetModal({
               rows={4}
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
-              placeholder="Contoh salin dari spreadsheet:&#10;1301230001	Ahmad Fauzan	Divisi Acara	Anggota	ahmad@gmail.com	081234567890&#10;1301230002	Nurul Hidayah	Divisi PDD	Ketua Divisi		081298765432"
+              placeholder="Contoh salin dari spreadsheet:&#10;1301230001	Ahmad Fauzan	Divisi Acara	Anggota	ahmad@gmail.ac.id	081234567890&#10;1301230002	Nurul Hidayah	Divisi PDD	Ketua Divisi	nurul@gmail.com	081298765432"
               className="w-full p-3 font-mono text-xs rounded-xl border border-stone-200 focus:outline-none focus:border-mtq-crimson bg-[#fafaf9]"
             />
 
@@ -399,7 +422,7 @@ export function ImportSpreadsheetModal({
                     Pratinjau Tabel ({parsedRows.length} Baris Data)
                   </span>
                   <span className="text-[11px] text-stone-500 ml-2">
-                    (Kolom email dapat dikosongkan atau diedit langsung di tabel)
+                    (Email wajib diisi untuk setiap akun panitia)
                   </span>
                 </div>
                 <span className="text-[11px] text-stone-600 font-medium">
@@ -414,7 +437,7 @@ export function ImportSpreadsheetModal({
                       <th className="px-3 py-2 w-20">Status</th>
                       <th className="px-3 py-2 w-28">NIM</th>
                       <th className="px-3 py-2">Nama Lengkap</th>
-                      <th className="px-3 py-2">Email (Gmail / Opsional)</th>
+                      <th className="px-3 py-2">Email (Wajib Masuk)</th>
                       <th className="px-3 py-2">Divisi</th>
                       <th className="px-3 py-2">Role</th>
                       <th className="px-3 py-2 w-10 text-center">Aksi</th>
@@ -428,8 +451,8 @@ export function ImportSpreadsheetModal({
                           row.status === "INVALID"
                             ? "bg-rose-50/50"
                             : row.status === "WARNING"
-                            ? "bg-amber-50/30"
-                            : "hover:bg-stone-50"
+                              ? "bg-amber-50/30"
+                              : "hover:bg-stone-50"
                         }
                       >
                         <td className="px-3 py-2">
@@ -478,14 +501,15 @@ export function ImportSpreadsheetModal({
                           />
                         </td>
 
-                        {/* Email - Boleh Kosong */}
+                        {/* Email - Wajib */}
                         <td className="px-3 py-2">
                           <input
                             type="email"
+                            required
                             value={row.email}
                             onChange={(e) => handleUpdateRow(row.id, { email: e.target.value })}
                             className="w-full px-1.5 py-1 text-xs font-mono rounded border border-stone-200 bg-white focus:outline-none focus:border-stone-400 text-stone-700 placeholder:italic placeholder:text-stone-300"
-                            placeholder="nama@gmail.com (opsional)"
+                            placeholder="nama@email.com *"
                           />
                         </td>
 
@@ -552,7 +576,7 @@ export function ImportSpreadsheetModal({
           <div className="text-[11px] text-stone-500">
             {isParsed && parsedRows.length > 0 && (
               <span>
-                Kata sandi awal untuk semua akun baru: <strong>NIM</strong>
+                Akun panitia masuk menggunakan <strong>Email</strong>, dengan kata sandi awal default: <strong>NIM</strong>.
               </span>
             )}
           </div>
