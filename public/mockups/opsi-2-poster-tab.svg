@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 680" width="100%" height="100%" style="background-color: #faf8f5; font-family: system-ui, -apple-system, sans-serif;">
+  <!-- Canvas Background -->
+  <rect width="500" height="680" fill="#faf8f5" />
+  
+  <!-- Subtle Poster Concentric Arc Rings (Bottom Left, Subtle) -->
+  <circle cx="20" cy="660" r="140" fill="none" stroke="#e05315" stroke-width="2" opacity="0.08" />
+  <circle cx="20" cy="660" r="100" fill="none" stroke="#c9242b" stroke-width="2" opacity="0.08" />
+
+  <!-- OPTION 2 LABEL -->
+  <g transform="translate(30, 35)">
+    <rect width="210" height="26" rx="6" fill="#fff7ed" stroke="#fed7aa" stroke-width="1" />
+    <text x="12" y="17" font-size="11" font-weight="700" fill="#c2410c" letter-spacing="0.5">OPSI 2: TAB KIRI KHAS POSTER</text>
+  </g>
+
+  <!-- TOP BRANDING HEADER -->
+  <g transform="translate(60, 95)">
+    <g transform="translate(0, 0)">
+      <span style="display: flex;">
+        <rect width="32" height="32" rx="8" fill="#c9242b" />
+        <text x="16" y="22" font-size="16" font-weight="900" fill="#ffffff" text-anchor="middle">M</text>
+      </span>
+      <text x="44" y="18" font-size="16" font-weight="800" fill="#1c1917">MTQ Tel-U 2026</text>
+      <text x="44" y="32" font-size="11" font-weight="500" fill="#78716c">Direktorat KKA • Portal Panitia</text>
+    </g>
+  </g>
+
+  <!-- THE CARD (With Attached Tab on Top-Left - Exact Poster Card) -->
+  <g transform="translate(60, 160)">
+    <!-- White Card Base -->
+    <rect x="0" y="16" width="380" height="420" rx="24" fill="#ffffff" stroke="#e7e2da" stroke-width="1.5" filter="drop-shadow(0 10px 25px rgba(28,25,23,0.05))" />
+    
+    <!-- THE SIGNATURE ATTACHED TAB PILL (Top-Left from Poster!) -->
+    <g transform="translate(28, 16)">
+      <rect x="0" y="-16" width="160" height="32" rx="16" fill="#c9242b" filter="drop-shadow(0 3px 6px rgba(201,36,43,0.3))" />
+      <text x="80" y="4" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="0.5">PORTAL MASUK</text>
+    </g>
+
+    <!-- FORM ELEMENTS -->
+    <g transform="translate(32, 55)">
+      <!-- Card Title -->
+      <text x="0" y="24" font-size="20" font-weight="800" fill="#1c1917">Akses Kepanitiaan</text>
+      <text x="0" y="44" font-size="12" font-weight="400" fill="#78716c">Silakan masuk menggunakan akun panitia.</text>
+
+      <!-- Field 1: Email / NIM -->
+      <g transform="translate(0, 68)">
+        <text x="0" y="10" font-size="11" font-weight="700" fill="#44403c">EMAIL SSO TELKOM / NIM</text>
+        <rect x="0" y="18" width="316" height="46" rx="12" fill="#faf8f5" stroke="#e7e2da" stroke-width="1.2" />
+        <text x="16" y="46" font-size="13" fill="#a8a29e">nama@telkomuniversity.ac.id</text>
+      </g>
+
+      <!-- Field 2: Password -->
+      <g transform="translate(0, 154)">
+        <text x="0" y="10" font-size="11" font-weight="700" fill="#44403c">KATA SANDI</text>
+        <rect x="0" y="18" width="316" height="46" rx="12" fill="#faf8f5" stroke="#e7e2da" stroke-width="1.2" />
+        <text x="16" y="46" font-size="15" fill="#1c1917">••••••••••••</text>
+        <!-- Eye Icon -->
+        <circle cx="295" cy="41" r="5" fill="none" stroke="#a8a29e" stroke-width="1.5" />
+      </g>
+
+      <!-- Options Row -->
+      <g transform="translate(0, 238)">
+        <rect x="0" y="0" width="16" height="16" rx="4" fill="#c9242b" />
+        <path d="M4 8 L7 11 L12 5" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        <text x="24" y="13" font-size="12" font-weight="500" fill="#57534e">Ingat saya</text>
+        <text x="316" y="13" font-size="12" font-weight="600" fill="#c9242b" text-anchor="end">Lupa sandi?</text>
+      </g>
+
+      <!-- Primary Action Button (Sunset Red-Orange) -->
+      <g transform="translate(0, 276)">
+        <rect x="0" y="0" width="316" height="48" rx="14" fill="#c9242b" filter="drop-shadow(0 4px 10px rgba(201,36,43,0.25))" />
+        <text x="158" y="29" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">Masuk Sekarang</text>
+      </g>
+
+      <!-- Single Line Division Note -->
+      <g transform="translate(0, 348)">
+        <rect width="316" height="28" rx="8" fill="#f5f5f4" />
+        <text x="158" y="18" font-size="10" font-weight="600" fill="#78716c" text-anchor="middle">Khusus Panitia MTQ Telkom University 2026</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- FOOTER -->
+  <g transform="translate(250, 630)" text-anchor="middle">
+    <text x="0" y="0" font-size="11" font-weight="600" fill="#78716c">Road to MTQMN 2027 • Bandung</text>
+  </g>
+</svg>

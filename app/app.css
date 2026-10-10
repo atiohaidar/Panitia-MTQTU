@@ -1,0 +1,217 @@
+@import "tailwindcss" source(".");
+
+/* ════════════════════════════════════════════════════════════
+   MTQ Tel-U 2026 — Design Tokens
+   Docs & live examples: /styleguide
+   ════════════════════════════════════════════════════════════ */
+@theme {
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", monospace;
+  --font-display: "Baloo 2", cursive, sans-serif;
+  --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-arabic: "Amiri", "Traditional Arabic", serif;
+
+  /* MTQTU Signature Palette */
+  --color-mtq-crimson: #c9242b;
+  --color-mtq-crimson-dark: #9b1b20;
+  --color-mtq-crimson-50: #fdf2f2;
+  --color-mtq-orange: #e05315; /* publikasi/poster only */
+  --color-mtq-amber: #f28522; /* publikasi/poster only */
+  --color-mtq-forest: #1e3a2b; /* Road to MTQMN */
+  --color-mtq-canvas: #fafaf9; /* app background (dashboard) */
+  --color-mtq-card: #ffffff;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-mtq-canvas);
+  color: #1c1917;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ════════════════════════════════════════════════════════════
+   Components — pakai class ini, jangan copy-paste utility panjang
+   ════════════════════════════════════════════════════════════ */
+@layer components {
+  /* ── Buttons ── */
+  .btn {
+    @apply inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold whitespace-nowrap transition-colors select-none;
+    @apply focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mtq-crimson;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-sm {
+    @apply h-8 gap-1.5 px-3 text-[13px];
+  }
+  .btn-lg {
+    @apply h-11 px-5 text-[15px];
+  }
+  .btn-primary {
+    @apply bg-mtq-crimson text-white hover:bg-mtq-crimson-dark;
+  }
+  .btn-secondary {
+    @apply border border-stone-300 bg-white text-stone-800 hover:border-stone-400 hover:bg-stone-50;
+  }
+  .btn-ghost {
+    @apply text-stone-600 hover:bg-stone-100 hover:text-stone-900;
+  }
+  .btn-danger {
+    @apply border border-rose-200 bg-white text-rose-700 hover:border-rose-300 hover:bg-rose-50;
+  }
+
+  /* ── Form fields ── */
+  .field-label {
+    @apply block text-sm font-medium text-stone-700;
+  }
+  .field-hint {
+    @apply text-[13px] text-stone-500;
+  }
+  .field-error {
+    @apply text-[13px] font-medium text-rose-700;
+  }
+  .input {
+    @apply h-10 w-full rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-900 transition placeholder:text-stone-400;
+    @apply focus:border-mtq-crimson focus:ring-4 focus:ring-mtq-crimson/10 focus:outline-none;
+    @apply disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-500;
+    @apply aria-invalid:border-rose-500 aria-invalid:focus:ring-rose-500/15;
+  }
+  textarea.input {
+    @apply h-auto min-h-24 py-2.5 leading-relaxed;
+  }
+  select.input {
+    @apply appearance-none pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5.5 7.5l4.5 4.5 4.5-4.5' stroke='%2378716c' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-size: 1.1rem;
+    background-position: right 0.6rem center;
+    background-repeat: no-repeat;
+  }
+  .check {
+    @apply h-4 w-4 shrink-0 accent-mtq-crimson;
+  }
+
+  /* ── Status badges (dot + label, bukan pill teriak) ── */
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ring-inset;
+  }
+  .badge::before {
+    content: "";
+    @apply h-1.5 w-1.5 rounded-full bg-current opacity-80;
+  }
+  .badge-neutral {
+    @apply bg-stone-50 text-stone-600 ring-stone-500/20;
+  }
+  .badge-success {
+    @apply bg-emerald-50 text-emerald-700 ring-emerald-600/20;
+  }
+  .badge-warning {
+    @apply bg-amber-50 text-amber-800 ring-amber-600/25;
+  }
+  .badge-danger {
+    @apply bg-rose-50 text-rose-700 ring-rose-600/20;
+  }
+  .badge-info {
+    @apply bg-sky-50 text-sky-700 ring-sky-600/20;
+  }
+
+  /* ── Surfaces ── */
+  .card {
+    @apply rounded-xl border border-stone-200 bg-white;
+  }
+
+  /* ── Data table ── */
+  .data-table {
+    @apply w-full border-collapse text-left text-sm;
+  }
+  .data-table thead th {
+    @apply border-b border-stone-200 bg-stone-50/70 px-4 py-2.5 text-[13px] font-medium whitespace-nowrap text-stone-500;
+  }
+  .data-table tbody td {
+    @apply border-b border-stone-100 px-4 py-3 align-middle text-stone-700;
+  }
+  .data-table tbody tr {
+    @apply transition-colors hover:bg-stone-50/80;
+  }
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+}
+
+/* Girih pattern fade (brand panel texture) */
+.girih-fade {
+  -webkit-mask-image: radial-gradient(120% 90% at 100% 100%, #000 10%, transparent 70%);
+  mask-image: radial-gradient(120% 90% at 100% 100%, #000 10%, transparent 70%);
+}
+
+/* ════════════════════════════════════════════════════════════
+   Publikasi / poster only — JANGAN dipakai di dashboard & form.
+   (Masih dipakai oleh /mockups)
+   ════════════════════════════════════════════════════════════ */
+
+/* Poster Title Wordmark (Red fill with thick white contour & soft depth) */
+.poster-wordmark {
+  font-family: var(--font-display);
+  color: #c9242b;
+  -webkit-text-stroke: 4px #ffffff;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 4px 12px rgba(201, 36, 43, 0.22)) drop-shadow(0 2px 4px rgba(28, 25, 23, 0.1));
+}
+
+/* Floating Island Container (PayGate Light Mode) */
+.island-container-light {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(231, 226, 218, 0.9);
+  box-shadow: 0 4px 20px -2px rgba(28, 25, 23, 0.04);
+}
+
+/* Precision Surface Card (PayGate Light Mode Standard) */
+.surface-card-light {
+  background: #ffffff;
+  border: 1.5px solid #e7e2da;
+  border-radius: 1.5rem;
+  box-shadow: 0 20px 40px -15px rgba(28, 25, 23, 0.06), 0 2px 6px -1px rgba(28, 25, 23, 0.02);
+}
+
+/* Signature Attached Tab Pill Header (From Poster) */
+.tab-pill-light {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #c9242b;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.35rem 1rem;
+  border-radius: 9999px;
+  box-shadow: 0 2px 8px rgba(201, 36, 43, 0.25);
+}
+
+/* Dashed Benefit Pills (Sleek Light Translation) */
+.poster-pill-dashed-light {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed #a8a29e;
+  border-radius: 9999px;
+  background-color: #faf8f5;
+  padding: 0.35rem 0.9rem;
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: #44403c;
+  transition: all 0.15s ease;
+}
+
+.poster-pill-dashed-light:hover {
+  border-color: #c9242b;
+  background-color: #fef2f2;
+  color: #9b1b20;
+}
